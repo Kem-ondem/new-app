@@ -36,6 +36,10 @@ function App() {
   const [selectedCourse, setSelectedCourse] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
   const [userId, setUserId] = useState(null)
+  const [studentName, setStudentName] = useState('')
+  const [nameDraft, setNameDraft] = useState('')
+  const [savingName, setSavingName] = useState(false)
+  const [profileMessage, setProfileMessage] = useState('')
   const [savedCourses, setSavedCourses] = useState([])
   const [progressByCourse, setProgressByCourse] = useState({})
   const [resourcesByCourse, setResourcesByCourse] = useState({})
@@ -65,6 +69,10 @@ function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const email = session?.user?.email?.toLowerCase() ?? ''
       setUserId(session?.user?.id ?? null)
+      const savedName = session?.user?.user_metadata?.full_name?.trim() ?? ''
+      setStudentName(savedName)
+      setNameDraft(savedName)
+      setProfileMessage('')
       const studentEmailSuffix = `@${STUDENT_EMAIL_DOMAIN}`
       const isStudentSession = email.endsWith(studentEmailSuffix)
 
@@ -76,6 +84,8 @@ function App() {
         )
       } else if (!session) {
         setIndexNumber('')
+        setStudentName('')
+        setNameDraft('')
         setSelectedCourse(null)
         setShowProfile(false)
         setProgrammeFilter('BSc. Computer Engineering')
@@ -295,7 +305,36 @@ function App() {
 
   function handleToggleProfile() {
     setSelectedCourse(null)
+    setProfileMessage('')
     setShowProfile((current) => !current)
+  }
+
+  async function saveStudentName(event) {
+    event.preventDefault()
+    const name = nameDraft.trim().replace(/\s+/g, ' ')
+    if (!name) {
+      setProfileMessage('Enter your name before saving.')
+      return
+    }
+
+    setSavingName(true)
+    setProfileMessage('')
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        data: { full_name: name },
+      })
+
+      if (error) throw error
+
+      const savedName = data.user?.user_metadata?.full_name?.trim() || name
+      setStudentName(savedName)
+      setNameDraft(savedName)
+      setProfileMessage('Your name is saved and will appear when you return.')
+    } catch (error) {
+      setProfileMessage(error.message || 'Could not save your name. Please try again.')
+    } finally {
+      setSavingName(false)
+    }
   }
 
   async function toggleSavedCourse(course) {
@@ -571,7 +610,7 @@ function App() {
           </div>
 
           <p className="eyebrow">STUDENT RESOURCE HUB</p>
-          <h1>Welcome to the GCTU Course Library</h1>
+          <h1>{studentName ? `Welcome, ${studentName}` : 'Welcome to the GCTU Course Library'}</h1>
           <p className="description">
             Enter your index number to receive a sign-in code at your GCTU
             student email.
@@ -713,10 +752,29 @@ function App() {
           <p className="eyebrow">STUDENT ACCOUNT</p>
           <h1>My profile</h1>
           <p className="description">
-            These are the account details used to sign in to the course library.
+            Add your name so the course library can greet you personally.
           </p>
 
           <div className="course-info">
+            <div>
+              <span className="info-label">Your name</span>
+              <form className="profile-name-form" onSubmit={saveStudentName}>
+                <input
+                  type="text"
+                  value={nameDraft}
+                  onChange={(event) => setNameDraft(event.target.value)}
+                  placeholder="Enter your name"
+                  autoComplete="name"
+                  maxLength={80}
+                  required
+                />
+                <button className="small-action-button" type="submit" disabled={savingName}>
+                  {savingName ? 'Saving…' : studentName ? 'Update name' : 'Save name'}
+                </button>
+              </form>
+              {profileMessage && <p className="profile-message" role="status">{profileMessage}</p>}
+            </div>
+
             <div>
               <span className="info-label">Index number</span>
               <strong>{indexNumber}</strong>
@@ -934,7 +992,7 @@ function App() {
         <div className={`screen-enter library-journey ${hasScrolledLibrary ? 'is-unfolded' : ''}`}>
           <section className="intro library-hero">
             <p className="eyebrow">STUDENT RESOURCE HUB</p>
-            <h1>Your course library.</h1>
+            <h1>{studentName ? `Welcome, ${studentName}` : 'Your course library.'}</h1>
             <p className="description">
               Search the library for courses and resources to support your
               studies.
