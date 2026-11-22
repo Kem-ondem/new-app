@@ -4,6 +4,9 @@ import { courseSources, courses, programmeOptions } from './courseCatalog'
 import './App.css'
 
 const STUDENT_EMAIL_DOMAIN = 'live.gctu.edu.gh'
+const MAX_RESOURCE_SIZE = 25 * 1024 * 1024
+const RESOURCE_FILE_TYPES = '.pdf,.doc,.docx,.ppt,.pptx,.txt,.rtf,.odt,.odp'
+const RESOURCE_EXTENSIONS = new Set(RESOURCE_FILE_TYPES.split(',').map((type) => type.slice(1)))
 
 function normalizeIndexNumber(value) {
   return value.trim().replace(/\s+/g, '').toUpperCase()
@@ -39,6 +42,9 @@ function App() {
   const [commentsByCourse, setCommentsByCourse] = useState({})
   const [resourceTitle, setResourceTitle] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
+  const [resourceBusy, setResourceBusy] = useState(false)
+  const [deletingResourceId, setDeletingResourceId] = useState(null)
+  const [resourceFeedback, setResourceFeedback] = useState('')
   const [commentText, setCommentText] = useState('')
   const [hasScrolledLibrary, setHasScrolledLibrary] = useState(false)
 
@@ -330,43 +336,98 @@ function App() {
     event.preventDefault()
     if (!selectedCourse || !selectedFile) return
 
+    const form = event.currentTarget
+    setAuthError('')
+    setResourceFeedback('')
+    if (selectedFile.size > MAX_RESOURCE_SIZE) {
+      setResourceFeedback('This file is larger than 25 MB. Choose a smaller file.')
+      return
+    }
+    const extension = selectedFile.name.split('.').pop()?.toLowerCase()
+    if (!extension || !RESOURCE_EXTENSIONS.has(extension)) {
+      setResourceFeedback('Choose a PDF, Word, PowerPoint, or text document.')
+      return
+    }
+
     const courseId = getCourseId(selectedCourse)
     if (!userId) return
 
     const cleanFileName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '-')
     const filePath = `${userId}/${Date.now()}-${cleanFileName}`
-    const { error: uploadError } = await supabase.storage
-      .from('course-resources')
-      .upload(filePath, selectedFile)
+    setResourceBusy(true)
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('course-resources')
+        .upload(filePath, selectedFile)
 
-    if (uploadError) {
-      setAuthError(uploadError.message)
-      return
+      if (uploadError) throw uploadError
+
+      const { data: resource, error: resourceError } = await supabase
+        .from('course_resources')
+        .insert({
+          course_key: courseId,
+          title: resourceTitle.trim() || selectedFile.name,
+          file_path: filePath,
+          file_name: selectedFile.name,
+          file_size: selectedFile.size,
+          created_by: userId,
+        })
+        .select('id, title, file_path, file_name, file_size, created_by, created_at')
+        .single()
+
+      if (resourceError) {
+        await supabase.storage.from('course-resources').remove([filePath])
+        throw resourceError
+      }
+
+      setResourcesByCourse((current) => ({ ...current, [courseId]: [resource, ...(current[courseId] || [])] }))
+      setResourceTitle('')
+      setSelectedFile(null)
+      form.reset()
+      setResourceFeedback('Upload complete. This resource is now shared with students.')
+    } catch (error) {
+      setResourceFeedback(error.message || 'Upload failed. Check your connection and try again.')
+    } finally {
+      setResourceBusy(false)
     }
+  }
 
-    const { data: resource, error: resourceError } = await supabase
-      .from('course_resources')
-      .insert({
-        course_key: courseId,
-        title: resourceTitle.trim() || selectedFile.name,
-        file_path: filePath,
-        file_name: selectedFile.name,
-        file_size: selectedFile.size,
-        created_by: userId,
-      })
-      .select('id, title, file_path, file_name, file_size, created_by, created_at')
-      .single()
+  async function handleResourceDelete(resource) {
+    if (!userId || resource.created_by !== userId || deletingResourceId) return
+    if (!window.confirm(`Remove “${resource.title}” from this course?`)) return
 
-    if (resourceError) {
-      await supabase.storage.from('course-resources').remove([filePath])
-      setAuthError(resourceError.message)
-      return
+    const courseId = getCourseId(selectedCourse)
+    setAuthError('')
+    setResourceFeedback('')
+    setDeletingResourceId(resource.id)
+    try {
+      const { error: rowError } = await supabase
+        .from('course_resources')
+        .delete()
+        .eq('id', resource.id)
+        .eq('created_by', userId)
+
+      if (rowError) throw rowError
+
+      setResourcesByCourse((current) => ({
+        ...current,
+        [courseId]: (current[courseId] || []).filter((item) => item.id !== resource.id),
+      }))
+
+      const { error: fileError } = await supabase.storage
+        .from('course-resources')
+        .remove([resource.file_path])
+
+      if (fileError) {
+        setResourceFeedback('The resource was removed from the library, but its stored file could not be deleted. Please contact support.')
+      } else {
+        setResourceFeedback('Your resource was removed.')
+      }
+    } catch (error) {
+      setResourceFeedback(error.message || 'Could not remove this resource. Please try again.')
+    } finally {
+      setDeletingResourceId(null)
     }
-
-    setResourcesByCourse((current) => ({ ...current, [courseId]: [resource, ...(current[courseId] || [])] }))
-    setResourceTitle('')
-    setSelectedFile(null)
-    event.currentTarget.reset()
   }
 
   async function handleCommentAdd(event) {
@@ -779,7 +840,7 @@ function App() {
             <section className="content-panel">
               <span className="panel-number">02</span>
               <h2>Resources</h2>
-              <p>Share a file name and resource title with your study list.</p>
+              <p>Share notes and study materials with everyone in this course.</p>
               <form className="resource-form" onSubmit={handleResourceAdd}>
                 <input
                   type="text"
@@ -789,11 +850,16 @@ function App() {
                 />
                 <input
                   type="file"
+                  accept={RESOURCE_FILE_TYPES}
                   onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
                   required
                 />
-                <button className="small-action-button" type="submit">Add resource</button>
+                <span className="resource-hint">PDF, Word, PowerPoint, or text files · up to 25 MB</span>
+                <button className="small-action-button" type="submit" disabled={resourceBusy || !selectedFile}>
+                  {resourceBusy ? 'Uploading…' : 'Add resource'}
+                </button>
               </form>
+              {resourceFeedback && <p className="resource-feedback" role="status">{resourceFeedback}</p>}
               {(resourcesByCourse[getCourseId(selectedCourse)] || []).length > 0 ? (
                 <ul className="resource-list">
                   {(resourcesByCourse[getCourseId(selectedCourse)] || []).map((resource) => (
@@ -807,6 +873,16 @@ function App() {
                       >
                         Open resource
                       </button>
+                      {resource.created_by === userId && (
+                        <button
+                          className="resource-delete"
+                          type="button"
+                          onClick={() => handleResourceDelete(resource)}
+                          disabled={deletingResourceId === resource.id}
+                        >
+                          {deletingResourceId === resource.id ? 'Removing…' : 'Remove my resource'}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>

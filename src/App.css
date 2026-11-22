@@ -862,6 +862,23 @@ input {
   font-size: 13px;
 }
 
+.small-action-button:disabled,
+.resource-delete:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.resource-hint,
+.resource-feedback {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.resource-feedback {
+  margin: 10px 0 0;
+}
+
 .resource-list {
   display: flex;
   flex-direction: column;
@@ -899,6 +916,22 @@ input {
 }
 
 .resource-download:hover {
+  text-decoration: underline;
+}
+
+.resource-delete {
+  align-self: flex-start;
+  margin-top: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #a33b35;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.resource-delete:hover {
   text-decoration: underline;
 }
 
