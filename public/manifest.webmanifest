@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "GCTU Course Library",
+  "short_name": "GCTU Library",
+  "description": "A student resource hub for GCTU courses and study materials.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#102a43",
+  "theme_color": "#102a43",
+  "icons": [
+    {
+      "src": "/gctu-app-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/gctu-app-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
