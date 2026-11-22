@@ -396,7 +396,7 @@ function App() {
     setResourceBusy(true)
     try {
       const { error: uploadError } = await supabase.storage
-        .from('course-resources')
+        .from('Course-Resources')
         .upload(filePath, selectedFile)
 
       if (uploadError) throw uploadError
@@ -415,7 +415,7 @@ function App() {
         .single()
 
       if (resourceError) {
-        await supabase.storage.from('course-resources').remove([filePath])
+        await supabase.storage.from('Course-Resources').remove([filePath])
         throw resourceError
       }
 
@@ -454,7 +454,7 @@ function App() {
       }))
 
       const { error: fileError } = await supabase.storage
-        .from('course-resources')
+        .from('Course-Resources')
         .remove([resource.file_path])
 
       if (fileError) {
@@ -494,7 +494,7 @@ function App() {
 
   async function downloadResource(resource) {
     const { data, error } = await supabase.storage
-      .from('course-resources')
+      .from('Course-Resources')
       .createSignedUrl(resource.file_path, 60)
 
     if (error) {

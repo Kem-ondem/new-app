@@ -16,7 +16,7 @@ set file_size_limit = 26214400,
       'application/vnd.oasis.opendocument.text',
       'application/vnd.oasis.opendocument.presentation'
     ]
-where id = 'course-resources';
+where id = 'Course-Resources';
 
 alter table public.course_resources enable row level security;
 
@@ -47,13 +47,18 @@ using (
   and created_by = (select auth.uid())
 );
 
+-- Remove older permissive policies; PostgreSQL combines policies with OR.
+drop policy if exists "Students can add resources" on public.course_resources;
+drop policy if exists "Students can delete their own resources" on public.course_resources;
+drop policy if exists "Students can view resources" on public.course_resources;
+
 drop policy if exists "GCTU students can read course resource files" on storage.objects;
 create policy "GCTU students can read course resource files"
 on storage.objects
 for select
 to authenticated
 using (
-  bucket_id = 'course-resources'
+  bucket_id = 'Course-Resources'
   and lower(coalesce(auth.jwt() ->> 'email', '')) like '%@live.gctu.edu.gh'
 );
 
@@ -63,7 +68,7 @@ on storage.objects
 for insert
 to authenticated
 with check (
-  bucket_id = 'course-resources'
+  bucket_id = 'Course-Resources'
   and lower(coalesce(auth.jwt() ->> 'email', '')) like '%@live.gctu.edu.gh'
   and (storage.foldername(name))[1] = (select auth.uid())::text
 );
@@ -74,7 +79,7 @@ on storage.objects
 for delete
 to authenticated
 using (
-  bucket_id = 'course-resources'
+  bucket_id = 'Course-Resources'
   and lower(coalesce(auth.jwt() ->> 'email', '')) like '%@live.gctu.edu.gh'
   and (storage.foldername(name))[1] = (select auth.uid())::text
 );
